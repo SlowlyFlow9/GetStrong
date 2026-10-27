@@ -1,0 +1,322 @@
+/* GetStrong: diseño pensado primero para el móvil (375 px de ancho). */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  color: #222;
+  background: #f4f4f4;
+}
+
+/* Al menos 16 px: así el iPhone no amplía la pantalla al tocar un campo */
+input, select, textarea, button {
+  font-size: 16px;
+  font-family: inherit;
+}
+
+button {
+  padding: 8px 12px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+/* ---------- Cabecera ---------- */
+
+.cabecera {
+  position: sticky;
+  top: 0;
+  padding: 8px 16px;
+  background: #222;
+}
+
+.pestanas {
+  display: flex;
+  gap: 8px;
+}
+
+.pestanas button {
+  flex: 1;
+  background: #444;
+  color: #fff;
+  border-color: #444;
+}
+
+/* Pestaña de la vista que se está viendo */
+.pestanas button.activa {
+  background: #fff;
+  color: #222;
+}
+
+/* Aviso del entrenamiento abierto, siempre arriba (RF-37) */
+.aviso-entreno {
+  margin: 0 0 8px;
+  color: #fff;
+}
+
+.aviso-entreno button {
+  margin-left: 4px;
+  padding: 4px 10px;
+}
+
+/* ---------- Contenido ---------- */
+
+main {
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Errores y avisos en rojo dentro de la página (nunca alert) */
+.aviso {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid #c62828;
+  border-radius: 6px;
+  background: #fdecea;
+  color: #c62828;
+}
+
+/* ---------- Vista Semana ---------- */
+
+.dias {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dia {
+  margin-bottom: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.dia-cabecera {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.dia-nombre {
+  font-weight: bold;
+}
+
+.hecho {
+  color: #2e7d32;
+}
+
+.dia-controles {
+  display: flex;
+  gap: 8px;
+}
+
+/* El desplegable ocupa el hueco que deja el botón "Ver"; min-width: 0 evita que
+   un nombre largo de rutina lo ensanche más allá de la pantalla */
+.dia-controles select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+}
+
+.vacio {
+  margin: 8px 0 0;
+  color: #777;
+}
+
+/* ---------- Vista Rutinas ---------- */
+
+.formulario {
+  margin-bottom: 16px;
+}
+
+.formulario label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: bold;
+}
+
+/* Campo y botón en la misma fila; min-width: 0 deja que el campo encoja a 375 px */
+.fila {
+  display: flex;
+  gap: 8px;
+}
+
+.fila input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+}
+
+.rutinas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rutina {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* Un nombre de 50 letras sin espacios se parte en varias líneas en vez de desbordar */
+.rutina-nombre {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: bold;
+}
+
+.rutina-botones {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---------- Vista Editar rutina y formulario de ejercicio ---------- */
+
+h2 {
+  margin: 16px 0 8px;
+  font-size: 18px;
+}
+
+.ejercicios {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.ejercicio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* Miniatura cuadrada de 64 px: recorta la foto sin deformarla */
+.miniatura {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+/* Un título de 50 letras sin espacios se parte en varias líneas en vez de desbordar */
+.ejercicio-texto {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ejercicio-titulo {
+  display: block;
+  font-weight: bold;
+}
+
+.ejercicio-series {
+  color: #777;
+}
+
+/* Campos del formulario de ejercicio a todo el ancho */
+.campo {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 6px;
+}
+
+.vista-previa {
+  display: block;
+  max-width: 100%;
+  max-height: 200px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+}
+
+/* ---------- Vista Día ---------- */
+
+.dia-cabecera h2 {
+  margin: 0;
+}
+
+/* Nombre de la rutina debajo del día */
+p.rutina-nombre {
+  margin: 4px 0 12px;
+}
+
+.botones-dia {
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+/* Una tarjeta por ejercicio: miniatura y título arriba, tabla debajo */
+.tarjeta {
+  margin-bottom: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.tarjeta .ejercicio {
+  margin-bottom: 4px;
+  padding: 0;
+}
+
+.tabla-series {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabla-series th,
+.tabla-series td {
+  padding: 6px;
+  border-top: 1px solid #eee;
+  text-align: center;
+}
+
+.tabla-series th {
+  color: #777;
+  font-weight: normal;
+}
+
+/* ---------- Entrenamiento abierto ---------- */
+
+/* Columnas de los campos KG y REPS: anchos fijos pequeños para que la tabla quepa a 375 px */
+.tabla-entreno td {
+  padding: 4px 2px;
+}
+
+.celda {
+  width: 64px;
+  padding: 6px 4px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  text-align: center;
+}
+
+/* Campo con un valor no válido al pulsar "Terminar entrenamiento" (RF-32) */
+.celda.erroneo {
+  border: 2px solid #c62828;
+  background: #fdecea;
+}
+
+.quitar {
+  padding: 6px 8px;
+}
+
+.sumar {
+  margin-top: 8px;
+}

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GetStrong</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Cabecera fija: aviso del entrenamiento abierto, pestañas de la semana y botón "Rutinas" -->
+  <header class="cabecera">
+    <!-- app.js lo rellena mientras hay un entrenamiento sin terminar (RF-37) -->
+    <div id="aviso-entreno"></div>
+    <nav class="pestanas">
+      <button type="button" id="pestana-actual">Esta semana</button>
+      <button type="button" id="pestana-siguiente">Siguiente</button>
+      <button type="button" id="boton-rutinas">Rutinas</button>
+    </nav>
+  </header>
+
+  <!-- Aquí app.js dibuja la vista que toque -->
+  <main id="vista"></main>
+
+  <!-- Script normal (sin type="module") para que funcione con doble clic (file://) -->
+  <script src="app.js"></script>
+</body>
+</html>
