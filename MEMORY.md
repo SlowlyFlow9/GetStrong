@@ -42,3 +42,5 @@
 - Nunca `new Date('AAAA-MM-DD')` (UTC): usar `fechaDeClave`. Sumar días con `new Date(a, m, d + n)`.
   Semanas de lunes a domingo. Funciones de fecha reciben `hoy` como parámetro.
 - En `escapar`, `&` el primero.
+- Definir siempre `color` en los botones: Safari en el iPhone pone el suyo (salía blanco sobre
+  blanco y en Chrome no se veía). Arreglado en la regla común `button` el 2026-10-28.

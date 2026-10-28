@@ -18,11 +18,15 @@ input, select, textarea, button {
   font-family: inherit;
 }
 
+/* Safari en el iPhone pone su propio color al texto de los botones (no hereda el
+   del body) y salía blanco sobre el fondo blanco. Por eso el color se define aquí,
+   para todos los botones; los que tienen su propio color lo cambian más abajo. */
 button {
   padding: 8px 12px;
   border: 1px solid #bbb;
   border-radius: 6px;
   background: #fff;
+  color: #222;
   cursor: pointer;
 }
 
@@ -332,4 +336,10 @@ p.rutina-nombre {
 
 .sumar {
   margin-top: 8px;
+}
+
+/* Botón "Añadir ejercicio" a todo el ancho: fácil de ver y de pulsar con el pulgar */
+.boton-ancho {
+  display: block;
+  width: 100%;
 }

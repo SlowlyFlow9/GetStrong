@@ -725,7 +725,7 @@ function htmlEditarRutina() {
     });
     html += '</ul>';
   }
-  return html + '<button type="button" data-anadir-ejercicio="si">Añadir ejercicio</button>';
+  return html + '<button type="button" class="boton-ancho" data-anadir-ejercicio="si">Añadir ejercicio</button>';
 }
 
 // Vista Ejercicio: formulario para añadir uno nuevo o editar uno que ya existe
