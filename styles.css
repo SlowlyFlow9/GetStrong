@@ -1,15 +1,38 @@
 /* GetStrong: diseño pensado primero para el móvil (375 px de ancho). */
 
+/* Paleta (spec 003): cada color está solo aquí; el resto del archivo usa var(--nombre) */
+:root {
+  --fondo: #100E1C;            /* página, cabecera y campos */
+  --tarjeta: #1E1C2C;
+  --hundido: #15131F;          /* zona de la tabla dentro de la tarjeta */
+  --texto: #F2F1F7;
+  --texto-secundario: #8D8AA0; /* también borde de los campos */
+  --texto-desactivado: #9693AA;
+  --azul: #6DB6F2;             /* botón principal, pestaña activa, foco, borde de la pregunta */
+  --azul-relieve: #3F86C9;
+  --texto-principal: #100E1C;
+  --boton: #2C2A3D;            /* secundario, desactivado y línea de la cabecera */
+  --boton-pulsado: #242235;
+  --error: #FF6B6B;
+  --fondo-error: #2A1620;
+  --hecho: #6EE7A0;
+}
+
 * {
   box-sizing: border-box;
 }
 
+/* Fondo también en html: es lo que asoma en el rebote de Safari al pasar del principio o del final */
+html, body {
+  background: var(--fondo);
+}
+
+/* Fuente del sistema (SF Pro en el iPhone): no se descarga ninguna */
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 16px;
-  color: #222;
-  background: #f4f4f4;
+  color: var(--texto);
 }
 
 /* Al menos 16 px: así el iPhone no amplía la pantalla al tocar un campo */
@@ -18,16 +41,81 @@ input, select, textarea, button {
   font-family: inherit;
 }
 
-/* Safari en el iPhone pone su propio color al texto de los botones (no hereda el
-   del body) y salía blanco sobre el fondo blanco. Por eso el color se define aquí,
-   para todos los botones; los que tienen su propio color lo cambian más abajo. */
+/* Campos de texto (nombre de rutina, título, series, KG y REPS): oscuros, con borde gris.
+   El desplegable y el selector de foto no se tocan: los pinta el navegador en oscuro
+   (meta color-scheme) y así conservan su flecha y su botón. */
+input[type="text"] {
+  padding: 10px;
+  border: 1px solid var(--texto-secundario);
+  border-radius: 12px;
+  background: var(--fondo);
+  color: var(--texto);
+}
+
+/* ---------- Botones ---------- */
+
+/* Esta regla común es el botón secundario (gris). Safari en el iPhone pone su propio
+   color al texto de los botones (no hereda el del body): por eso color y fondo se
+   definen aquí, para todos los botones; los que tienen su propio estilo lo cambian
+   más abajo. Sin estados al pasar el puntero (RF-25). */
 button {
-  padding: 8px 12px;
-  border: 1px solid #bbb;
-  border-radius: 6px;
-  background: #fff;
-  color: #222;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--boton);
+  color: var(--texto);
+  -webkit-tap-highlight-color: transparent; /* sin el recuadro gris al tocar en el iPhone */
   cursor: pointer;
+}
+
+/* Secundario pulsado: un poco más oscuro, sin moverse y sin transición */
+button:active:not(:disabled) {
+  background: var(--boton-pulsado);
+}
+
+/* Desactivado: color y fondo propios y opacity 1, porque Safari pone los suyos */
+button:disabled {
+  background: var(--boton);
+  color: var(--texto-desactivado);
+  opacity: 1;
+  cursor: default;
+}
+
+/* Botón principal (uno por pantalla): azul con relieve de 4 px en el borde inferior */
+.principal {
+  background: var(--azul);
+  color: var(--texto-principal);
+  border-bottom: 4px solid var(--azul-relieve);
+  transition: margin-top 0.1s, border-bottom-width 0.1s;
+}
+
+/* Principal pulsado: baja 2 px y el borde pierde 2 px, así lo de debajo no se mueve.
+   Repite el azul para no quedarse con el gris del secundario pulsado. */
+.principal:active:not(:disabled) {
+  background: var(--azul);
+  margin-top: 2px;
+  border-bottom-width: 2px;
+}
+
+/* Principal desactivado: gris, sin relieve. El borde se queda (mismo gris que el
+   fondo) para que el botón mida lo mismo de alto que cuando está activo. */
+.principal:disabled {
+  background: var(--boton);
+  color: var(--texto-desactivado);
+  border-bottom-color: var(--boton);
+}
+
+/* Con la reducción de movimiento activada, el hundido es instantáneo */
+@media (prefers-reduced-motion: reduce) {
+  .principal {
+    transition: none;
+  }
+}
+
+/* Contorno azul al llegar con el teclado a un botón, pestaña o campo */
+:focus-visible {
+  outline: 2px solid var(--azul);
+  outline-offset: 2px;
 }
 
 /* ---------- Cabecera ---------- */
@@ -35,8 +123,9 @@ button {
 .cabecera {
   position: sticky;
   top: 0;
-  padding: 8px 16px;
-  background: #222;
+  padding: 8px 16px 0;
+  background: var(--fondo);
+  border-bottom: 1px solid var(--boton); /* línea fina que la separa del contenido */
 }
 
 .pestanas {
@@ -44,23 +133,32 @@ button {
   gap: 8px;
 }
 
-.pestanas button {
-  flex: 1;
-  background: #444;
-  color: #fff;
-  border-color: #444;
+/* Las pestañas son texto sin fondo de botón (no son botones secundarios). La regla
+   :active va aquí, después de la de los botones y con la misma fuerza, para que
+   pulsarlas no las oscurezca (RF-11). El borde inferior transparente reserva el
+   sitio del subrayado: así la pestaña no salta al pasar a ser la activa. */
+.pestanas button,
+.pestanas button:active {
+  flex: 1; /* cada pestaña ocupa un tercio: el subrayado mide todo su ancho */
+  background: transparent;
+  color: var(--texto-secundario);
+  border-radius: 0;
+  border-bottom: 3px solid transparent;
+  padding: 12px 0;
 }
 
-/* Pestaña de la vista que se está viendo */
+/* Pestaña de la vista que se está viendo: azul, en negrita y subrayada */
 .pestanas button.activa {
-  background: #fff;
-  color: #222;
+  color: var(--azul);
+  font-weight: 700;
+  border-bottom-color: var(--azul);
 }
 
-/* Aviso del entrenamiento abierto, siempre arriba (RF-37) */
+/* Aviso del entrenamiento abierto, siempre arriba (RF-37); su "Continuar" es un
+   botón secundario (la regla común) con un relleno más compacto */
 .aviso-entreno {
   margin: 0 0 8px;
-  color: #fff;
+  color: var(--texto);
 }
 
 .aviso-entreno button {
@@ -80,10 +178,10 @@ main {
 .aviso {
   margin: 0 0 12px;
   padding: 8px 12px;
-  border: 1px solid #c62828;
-  border-radius: 6px;
-  background: #fdecea;
-  color: #c62828;
+  border: 1px solid var(--error);
+  border-radius: 12px;
+  background: var(--fondo-error);
+  color: var(--error);
 }
 
 /* ---------- Vista Semana ---------- */
@@ -96,9 +194,19 @@ main {
 
 .dia {
   margin-bottom: 8px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #fff;
+  padding: 16px;
+}
+
+/* Tarjetas: día, rutina, ejercicio de la rutina, ejercicio del Día y pregunta */
+.dia, .rutina, li.ejercicio, .tarjeta, .pregunta {
+  border-radius: 16px;
+  background: var(--tarjeta);
+}
+
+/* Títulos de tarjeta: día, rutina y ejercicio */
+.dia-nombre, span.rutina-nombre, .ejercicio-titulo {
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .dia-cabecera {
@@ -107,12 +215,8 @@ main {
   margin-bottom: 8px;
 }
 
-.dia-nombre {
-  font-weight: bold;
-}
-
 .hecho {
-  color: #2e7d32;
+  color: var(--hecho);
 }
 
 .dia-controles {
@@ -130,7 +234,7 @@ main {
 
 .vacio {
   margin: 8px 0 0;
-  color: #777;
+  color: var(--texto-secundario);
 }
 
 /* ---------- Vista Rutinas ---------- */
@@ -143,6 +247,7 @@ main {
   display: block;
   margin-bottom: 4px;
   font-weight: bold;
+  color: var(--texto-secundario);
 }
 
 /* Campo y botón en la misma fila; min-width: 0 deja que el campo encoja a 375 px */
@@ -154,7 +259,6 @@ main {
 .fila input {
   flex: 1;
   min-width: 0;
-  padding: 6px;
 }
 
 .rutinas {
@@ -168,9 +272,7 @@ main {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #fff;
+  padding: 16px;
 }
 
 /* Un nombre de 50 letras sin espacios se parte en varias líneas en vez de desbordar */
@@ -178,7 +280,6 @@ main {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-weight: bold;
 }
 
 .rutina-botones {
@@ -188,9 +289,16 @@ main {
 
 /* ---------- Vista Editar rutina y formulario de ejercicio ---------- */
 
+/* "Ejercicios" en Editar rutina: título de sección */
 h2 {
   margin: 16px 0 8px;
   font-size: 18px;
+  font-weight: 700;
+}
+
+/* Títulos de pantalla: el del Día y el de "Nuevo / Editar ejercicio" */
+.dia-cabecera h2, .formulario h2 {
+  font-size: 24px;
 }
 
 .ejercicios {
@@ -199,23 +307,39 @@ h2 {
   padding: 0;
 }
 
+/* Rutina sin ejercicios: el mensaje deja el mismo hueco que la lista antes de "Añadir ejercicio" */
+h2 + .vacio {
+  margin: 0 0 12px;
+}
+
 .ejercicio {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  padding: 8px;
-  border-radius: 8px;
-  background: #fff;
+  padding: 16px;
 }
 
-/* Miniatura cuadrada de 64 px: recorta la foto sin deformarla */
+/* Editar rutina: rejilla de dos columnas. La foto ocupa las dos filas a la izquierda;
+   a su derecha, arriba el título y las series y debajo "Editar" y "Borrar". Así el
+   título tiene todo el ancho y no parte palabras como "Dominadas". Solo li.ejercicio:
+   la tarjeta del Día (div.ejercicio) sigue en fila. */
+li.ejercicio {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+}
+
+li.ejercicio .miniatura {
+  grid-row: span 2;
+}
+
+/* Foto en un círculo de 56 px: object-fit recorta la foto sin deformarla */
 .miniatura {
   flex: none;
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 50%;
 }
 
 /* Un título de 50 letras sin espacios se parte en varias líneas en vez de desbordar */
@@ -227,19 +351,18 @@ h2 {
 
 .ejercicio-titulo {
   display: block;
-  font-weight: bold;
 }
 
 .ejercicio-series {
-  color: #777;
+  color: var(--texto-secundario);
 }
 
-/* Campos del formulario de ejercicio a todo el ancho */
+/* Campos del formulario de ejercicio a todo el ancho. Solo ancho y margen: la lleva
+   también el selector de foto, que se queda como lo pinta el navegador. */
 .campo {
   display: block;
   width: 100%;
   margin-bottom: 12px;
-  padding: 6px;
 }
 
 .vista-previa {
@@ -247,7 +370,7 @@ h2 {
   max-width: 100%;
   max-height: 200px;
   margin-bottom: 12px;
-  border-radius: 6px;
+  border-radius: 16px;
 }
 
 /* ---------- Vista Día ---------- */
@@ -256,86 +379,113 @@ h2 {
   margin: 0;
 }
 
-/* Nombre de la rutina debajo del día */
+/* Nombre de la rutina debajo del día: texto secundario, no título de tarjeta
+   (la misma clase es título en Rutinas: aquí se fijan tamaño y peso normales) */
 p.rutina-nombre {
   margin: 4px 0 12px;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--texto-secundario);
 }
 
+/* "Empezar/Terminar entrenamiento" y debajo "Editar rutina", uno encima de otro y a
+   todo el ancho (en columna, los botones se estiran solos) */
 .botones-dia {
-  flex-wrap: wrap;
+  flex-direction: column;
   margin-bottom: 16px;
 }
 
-/* Bloque de preguntas por los ejercicios pendientes, encima de las tarjetas (RF-5) */
+/* Bloque de preguntas por los ejercicios pendientes, encima de las tarjetas (RF-5):
+   tarjeta con borde azul para distinguirla de las de los ejercicios (RF-21) */
 .pregunta {
   margin-bottom: 16px;
-  padding: 8px 12px;
-  border: 1px solid #1565c0;
-  border-radius: 8px;
-  background: #e3f2fd;
+  padding: 16px;
+  border: 2px solid var(--azul);
 }
 
+/* Un título de 50 letras sin espacios se parte en vez de desbordar */
 .pregunta p {
-  margin: 0 0 8px;
+  margin: 0 0 12px;
+  color: var(--texto);
+  overflow-wrap: anywhere;
 }
 
-/* Una tarjeta por ejercicio: miniatura y título arriba, tabla debajo */
+/* Una tarjeta por ejercicio: cabecera (foto y título) y debajo la tabla de borde a
+   borde. Sin relleno: lo lleva la cabecera. overflow: hidden recorta la tabla con
+   las esquinas redondeadas de la tarjeta. */
 .tarjeta {
   margin-bottom: 12px;
-  padding: 8px;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.tarjeta .ejercicio {
-  margin-bottom: 4px;
   padding: 0;
+  overflow: hidden;
 }
 
+/* La cabecera de la tarjeta del Día no pinta otra tarjeta encima */
+.tarjeta .ejercicio {
+  margin: 0;
+  padding: 16px;
+  background: transparent;
+}
+
+/* Zona hundida, más oscura que la tarjeta. Sin líneas entre filas (como Liftoff). */
 .tabla-series {
   width: 100%;
   border-collapse: collapse;
+  background: var(--hundido);
 }
 
 .tabla-series th,
 .tabla-series td {
   padding: 6px;
-  border-top: 1px solid #eee;
   text-align: center;
 }
 
+/* Números grandes (serie y Previo) para leerlos de un vistazo mientras se entrena */
+.tabla-series td {
+  font-size: 20px;
+}
+
 .tabla-series th {
-  color: #777;
+  color: var(--texto-secundario);
   font-weight: normal;
+}
+
+/* Columna Previo en gris: es dato de referencia, no lo que se escribe */
+.tabla-series td:nth-child(2) {
+  color: var(--texto-secundario);
 }
 
 /* ---------- Entrenamiento abierto ---------- */
 
-/* Columnas de los campos KG y REPS: anchos fijos pequeños para que la tabla quepa a 375 px */
+/* Rellenos pequeños para que Serie, Previo, KG, REPS y "Quitar" quepan a 375 px */
 .tabla-entreno td {
   padding: 4px 2px;
 }
 
-.celda {
+/* KG y REPS: colores, borde y esquinas de input[type="text"]. Lleva .tabla-series
+   delante para ganar a input[type="text"] y poder cambiar su relleno. */
+.tabla-series .celda {
   width: 64px;
   padding: 6px 4px;
-  border: 1px solid #bbb;
-  border-radius: 6px;
+  font-size: 20px;
   text-align: center;
 }
 
 /* Campo con un valor no válido al pulsar "Terminar entrenamiento" (RF-32) */
 .celda.erroneo {
-  border: 2px solid #c62828;
-  background: #fdecea;
+  border: 2px solid var(--error);
+  background: var(--fondo-error);
+  color: var(--error);
 }
 
+/* "Quitar": secundario compacto para que quepa en la tabla (16 px: sin zoom en el iPhone) */
 .quitar {
-  padding: 6px 8px;
+  padding: 6px 10px;
+  font-size: 16px;
 }
 
+/* "+ Serie" debajo de la tabla, sobre el fondo de la tarjeta */
 .sumar {
-  margin-top: 8px;
+  margin: 12px 16px 16px;
 }
 
 /* Botón "Añadir ejercicio" a todo el ancho: fácil de ver y de pulsar con el pulgar */

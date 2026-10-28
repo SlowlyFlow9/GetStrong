@@ -586,11 +586,11 @@ function htmlDia(hoy) {
     '<div class="fila botones-dia">';
   if (entreno) {
     // No hay botón de cancelar: el entrenamiento solo se cierra terminándolo (RF-36)
-    html += '<button type="button" data-terminar="si">Terminar entrenamiento</button>';
+    html += '<button type="button" class="principal" data-terminar="si">Terminar entrenamiento</button>';
   } else if (diasDeSemana(hoy, 0).includes(clave)) {
     // RF-27: solo en la semana actual. RF-28: desactivado si la rutina no tiene ejercicios.
     const desactivado = puedeEmpezar(datos, clave, hoy) ? '' : ' disabled';
-    html += '<button type="button" data-empezar="' + clave + '"' + desactivado + '>Empezar entrenamiento</button>';
+    html += '<button type="button" class="principal" data-empezar="' + clave + '"' + desactivado + '>Empezar entrenamiento</button>';
   }
   html += '<button type="button" data-editar="' + escapar(rutina.id) + '">Editar rutina</button></div>';
 
@@ -677,7 +677,7 @@ function htmlRutinas() {
     '<label for="nombre-rutina">Nueva rutina</label>' +
     '<div class="fila">' +
     '<input id="nombre-rutina" type="text" maxlength="50" autocomplete="off">' +
-    '<button type="submit">Crear</button>' +
+    '<button type="submit" class="principal">Crear</button>' +
     '</div></form>';
 
   html += '<ul class="rutinas">';
@@ -725,7 +725,7 @@ function htmlEditarRutina() {
     });
     html += '</ul>';
   }
-  return html + '<button type="button" class="boton-ancho" data-anadir-ejercicio="si">Añadir ejercicio</button>';
+  return html + '<button type="button" class="boton-ancho principal" data-anadir-ejercicio="si">Añadir ejercicio</button>';
 }
 
 // Vista Ejercicio: formulario para añadir uno nuevo o editar uno que ya existe
@@ -750,7 +750,7 @@ function htmlEjercicio() {
     '<input id="series-ejercicio" class="campo" type="text" inputmode="numeric" autocomplete="off" value="' + escapar(String(ejercicio.series)) + '">' +
     htmlAviso() +
     '<div class="fila">' +
-    '<button type="submit">Guardar</button>' +
+    '<button type="submit" class="principal">Guardar</button>' +
     '<button type="button" data-volver="si">Cancelar</button>' +
     '</div></form>';
 }
@@ -972,6 +972,9 @@ function alTerminar() {
 // Arranca la app en el navegador.
 function iniciar() {
   datos = cargar();
+  // Safari en el iPhone solo aplica :active (botón hundido u oscurecido) si la página
+  // escucha algún toque; este listener vacío basta (RF-4, RF-26).
+  document.addEventListener('touchstart', () => {}, { passive: true });
 
   // Cabecera: pestañas y botón "Rutinas"
   document.getElementById('pestana-actual').addEventListener('click', () => {
