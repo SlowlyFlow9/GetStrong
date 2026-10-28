@@ -262,6 +262,19 @@ p.rutina-nombre {
   margin-bottom: 16px;
 }
 
+/* Bloque de preguntas por los ejercicios pendientes, encima de las tarjetas (RF-5) */
+.pregunta {
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border: 1px solid #1565c0;
+  border-radius: 8px;
+  background: #e3f2fd;
+}
+
+.pregunta p {
+  margin: 0 0 8px;
+}
+
 /* Una tarjeta por ejercicio: miniatura y título arriba, tabla debajo */
 .tarjeta {
   margin-bottom: 12px;

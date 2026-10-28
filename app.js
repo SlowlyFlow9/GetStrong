@@ -282,11 +282,35 @@ function escribirValor(datos, ejercicio, serie, campo, texto) {
   return nuevos;
 }
 
-// Añade una serie vacía al final del ejercicio (máximo 20). No cambia la rutina.
+// Lista de los ejercicios del entrenamiento abierto, en el orden de la tabla (spec 002):
+// primero los de la rutina y detrás los añadidos, en el orden en que se aceptaron.
+// Cada uno es { titulo, foto, numeros, origen }: "numeros" son los números de serie
+// que se ven en cada fila (en la rutina 1, 2, 3...; en un añadido, los originales).
+// La posición i de la lista es la misma que entrenamiento.series[i].
+function ejerciciosDelEntreno(datos) {
+  const entreno = datos.entrenamiento;
+  const rutina = datos.rutinas.find(r => r.id === entreno.rutinaId);
+  const deLaRutina = rutina.ejercicios.map((ejercicio, i) => ({
+    titulo: ejercicio.titulo,
+    foto: ejercicio.foto,
+    numeros: entreno.series[i].map((fila, j) => j + 1),
+    origen: { rutinaId: rutina.id, ejercicioId: ejercicio.id },
+  }));
+  // Un entreno empezado antes de la spec 002 no tiene "anadidos": ninguno.
+  return deLaRutina.concat(structuredClone(entreno.anadidos || []));
+}
+
+// Añade una serie vacía al final del ejercicio, con el número siguiente al de la
+// última fila, hasta la serie 20. No cambia la rutina.
 function sumarSerie(datos, ejercicio) {
   const nuevos = structuredClone(datos);
   const filas = nuevos.entrenamiento.series[ejercicio];
-  if (filas.length < 20) filas.push({ kg: '', reps: '' });
+  const numeros = ejerciciosDelEntreno(nuevos)[ejercicio].numeros;
+  if (numeros[numeros.length - 1] >= 20) return nuevos;
+  filas.push({ kg: '', reps: '' });
+  // En un ejercicio añadido el número de la fila nueva se guarda aparte
+  const anadido = anadidoEn(nuevos, ejercicio);
+  if (anadido) anadido.numeros.push(numeros[numeros.length - 1] + 1);
   return nuevos;
 }
 
@@ -294,8 +318,18 @@ function sumarSerie(datos, ejercicio) {
 function quitarSerie(datos, ejercicio) {
   const nuevos = structuredClone(datos);
   const filas = nuevos.entrenamiento.series[ejercicio];
-  if (filas.length > 1) filas.pop();
+  if (filas.length <= 1) return nuevos;
+  filas.pop();
+  const anadido = anadidoEn(nuevos, ejercicio);
+  if (anadido) anadido.numeros.pop();
   return nuevos;
+}
+
+// Devuelve el ejercicio añadido que ocupa la posición "ejercicio" del entreno,
+// o undefined si esa posición es de un ejercicio de la rutina.
+function anadidoEn(datos, ejercicio) {
+  const rutina = datos.rutinas.find(r => r.id === datos.entrenamiento.rutinaId);
+  return (datos.entrenamiento.anadidos || [])[ejercicio - rutina.ejercicios.length];
 }
 
 // Termina el entrenamiento abierto: guarda como Previo el peso de cada serie que
@@ -305,18 +339,112 @@ function quitarSerie(datos, ejercicio) {
 function terminarEntreno(datos) {
   const nuevos = structuredClone(datos);
   const entreno = nuevos.entrenamiento;
-  const rutina = nuevos.rutinas.find(r => r.id === entreno.rutinaId);
-  entreno.series.forEach((filas, i) => {
-    const titulo = normalizar(rutina.ejercicios[i].titulo);
-    filas.forEach((fila, serie) => {
+  // También los ejercicios añadidos: su Previo va por título y número de serie (RF-13)
+  ejerciciosDelEntreno(nuevos).forEach((ejercicio, i) => {
+    const titulo = normalizar(ejercicio.titulo);
+    entreno.series[i].forEach((fila, j) => {
       const peso = leerPeso(fila.kg);
       if (peso === null) return; // sin peso: se queda el Previo anterior
       if (!nuevos.pesos[titulo]) nuevos.pesos[titulo] = {};
-      nuevos.pesos[titulo][serie + 1] = peso; // en pantalla la serie empieza en 1
+      nuevos.pesos[titulo][ejercicio.numeros[j]] = peso; // el número que se ve en pantalla
     });
   });
   nuevos.plan[entreno.fecha].hecho = true;
   nuevos.entrenamiento = null;
+  return nuevos;
+}
+
+// ¿Sigue existiendo el ejercicio de la rutina del que salió un pendiente? (RF-15)
+// origen = { rutinaId, ejercicioId }. Se busca por id: renombrarlo no cambia nada.
+function existeOrigen(datos, origen) {
+  const rutina = datos.rutinas.find(r => r.id === origen.rutinaId);
+  return rutina !== undefined && rutina.ejercicios.some(e => e.id === origen.ejercicioId);
+}
+
+// Al terminar: cada ejercicio del entreno (de la rutina o añadido) con alguna serie
+// sin peso se añade AL FINAL de los pendientes, solo con esas series y sus números
+// (RF-1). Peso 0 o peso sin REPS = hecha (RF-2); las series quitadas ya no están en
+// la tabla (RF-3). Un añadido conserva su título, foto y origen (RF-14), salvo que su
+// origen se haya borrado: entonces no vuelve (RF-15). No cierra el entreno: después
+// hay que llamar a terminarEntreno. Antes hay que comprobar erroresEntreno.
+function guardarPendientes(datos) {
+  const nuevos = structuredClone(datos);
+  ejerciciosDelEntreno(nuevos).forEach((ejercicio, i) => {
+    const sinHacer = ejercicio.numeros.filter((numero, j) =>
+      leerPeso(nuevos.entrenamiento.series[i][j].kg) === null);
+    if (sinHacer.length === 0 || !existeOrigen(nuevos, ejercicio.origen)) return;
+    nuevos.pendientes.push({
+      titulo: ejercicio.titulo, foto: ejercicio.foto, numeros: sinHacer, origen: ejercicio.origen,
+    });
+  });
+  return nuevos;
+}
+
+// ---------- La cola de preguntas (spec 002) ----------
+// Siempre se pregunta por el primero de la cola, datos.pendientes[0] (orden de llegada).
+// Los que no se responden se quedan en su sitio (RF-11).
+
+// Al empezar un entreno nuevo: olvida, sin preguntar, los pendientes cuyo título
+// coincide con un ejercicio de la rutina de ese entreno (RF-8). Los demás siguen en orden.
+function olvidarCoincidentes(datos) {
+  const nuevos = structuredClone(datos);
+  const rutina = nuevos.rutinas.find(r => r.id === nuevos.entrenamiento.rutinaId);
+  nuevos.pendientes = nuevos.pendientes.filter(pendiente =>
+    !rutina.ejercicios.some(ejercicio => coinciden(ejercicio.titulo, pendiente.titulo)));
+  return nuevos;
+}
+
+// Texto de la pregunta por un pendiente (RF-5). Es texto plano: hay que escaparlo al pintar.
+function textoPregunta(pendiente) {
+  const n = pendiente.numeros.length;
+  const series = n === 1 ? '1 serie' : n + ' series';
+  return 'Te quedó sin hacer ' + pendiente.titulo + ' (' + series + '). ¿Añadirlo a este entrenamiento?';
+}
+
+// "Añadir" (RF-9): saca pendientes[0] de la cola y lo pone al final del entreno abierto,
+// tal cual (título, foto, números y origen copiados), con una fila vacía por cada número.
+// La rutina no cambia.
+function aceptarPendiente(datos) {
+  const nuevos = structuredClone(datos);
+  const pendiente = nuevos.pendientes.shift();
+  if (pendiente === undefined) return nuevos; // cola vacía: nada que añadir
+  const entreno = nuevos.entrenamiento;
+  if (!entreno.anadidos) entreno.anadidos = []; // entreno empezado sin añadidos
+  entreno.anadidos.push(pendiente);
+  entreno.series.push(pendiente.numeros.map(() => ({ kg: '', reps: '' })));
+  return nuevos;
+}
+
+// "No" (RF-10): saca pendientes[0] de la cola y lo olvida.
+function rechazarPendiente(datos) {
+  const nuevos = structuredClone(datos);
+  nuevos.pendientes.shift();
+  return nuevos;
+}
+
+// Tras borrar una rutina o un ejercicio: olvida los pendientes cuyo origen ya no existe (RF-15).
+function olvidarSinOrigen(datos) {
+  const nuevos = structuredClone(datos);
+  nuevos.pendientes = nuevos.pendientes.filter(pendiente => existeOrigen(nuevos, pendiente.origen));
+  return nuevos;
+}
+
+// ---------- Migración (spec 002) ----------
+
+// Pasa datos guardados con el formato de la spec 001 al formato de la 002 (RF-16).
+// Los datos del usuario son sagrados: SOLO añade lo que falta, nunca quita ni cambia nada.
+//   - Cada ejercicio sin id recibe "idDeLaRutina-posición" (p. ej. "lq3k9x-a1b2-0"):
+//     sale igual cada vez que se carga y no choca con nuevoId(), que tiene un solo guion.
+//   - Si no hay lista de pendientes, pone una vacía.
+// Se puede aplicar varias veces sin cambiar el resultado. Devuelve una copia.
+function migrar(datos) {
+  const nuevos = structuredClone(datos);
+  nuevos.rutinas.forEach(rutina => {
+    rutina.ejercicios.forEach((ejercicio, i) => {
+      if (ejercicio.id === undefined) ejercicio.id = rutina.id + '-' + i;
+    });
+  });
+  if (nuevos.pendientes === undefined) nuevos.pendientes = [];
   return nuevos;
 }
 
@@ -338,14 +466,18 @@ let datos = null;
 //   indice: ejercicio abierto en la vista 'ejercicio' (desde 0), o null si es uno nuevo
 //   foto: miniatura elegida en el formulario de ejercicio ('' si todavía no hay)
 //   aviso: texto en rojo que se ve en el siguiente pintar() y luego se borra
-const pantalla = { vista: 'semana', semana: 0, clave: null, idRutina: null, indice: null, foto: '', aviso: '' };
+//   preguntar: true desde "Empezar entrenamiento" hasta "Terminar entrenamiento": mientras
+//     tanto se pregunta por los pendientes (RF-5). Al recargar vuelve a false (RF-7, RF-11).
+const pantalla = { vista: 'semana', semana: 0, clave: null, idRutina: null, indice: null, foto: '', aviso: '', preguntar: false };
 
 // ---------- Guardado ----------
 
-// Lee los datos guardados, o devuelve datos vacíos si es la primera vez.
+// Lee los datos guardados, o devuelve datos vacíos si es la primera vez, y los pasa
+// al formato actual con migrar(). No escribe nada: lo migrado se guarda con el primer
+// cambio del usuario, así abrir la app nunca falla por falta de espacio.
 function cargar() {
   const texto = localStorage.getItem(CLAVE_GUARDADO);
-  return texto === null ? datosVacios() : JSON.parse(texto);
+  return migrar(texto === null ? datosVacios() : JSON.parse(texto));
 }
 
 // Guarda todos los datos en una sola clave: se guarda todo o nada.
@@ -360,7 +492,7 @@ function guardar(nuevos) {
   }
 }
 
-// Crea un id nuevo para una rutina, p. ej. "lq3k9x-a1b2" (fecha en base 36 + 4 letras al azar).
+// Crea un id nuevo para una rutina o un ejercicio, p. ej. "lq3k9x-a1b2" (fecha en base 36 + 4 letras al azar).
 // No usamos crypto.randomUUID() porque con file:// no siempre está disponible.
 function nuevoId() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
@@ -462,11 +594,26 @@ function htmlDia(hoy) {
   }
   html += '<button type="button" data-editar="' + escapar(rutina.id) + '">Editar rutina</button></div>';
 
+  // Bloque de preguntas (RF-5): debajo de los botones y encima de la primera tarjeta.
+  // Siempre pregunta por el primero de la cola. Escribir en la tabla no lo esconde
+  // porque el evento 'input' no repinta.
+  if (entreno && pantalla.preguntar && datos.pendientes.length > 0) {
+    html += '<div class="pregunta"><p>' + escapar(textoPregunta(datos.pendientes[0])) + '</p>' +
+      '<div class="fila">' +
+      '<button type="button" data-aceptar="si">Añadir</button>' +
+      '<button type="button" data-rechazar="si">No</button>' +
+      '</div></div>';
+  }
+
   if (rutina.ejercicios.length === 0) {
     // RF-19: mensaje en vez de tarjetas vacías
     return html + '<p class="vacio">Esta rutina no tiene ejercicios. Añade el primero.</p>';
   }
-  rutina.ejercicios.forEach((ejercicio, i) => {
+  // Con el entrenamiento abierto, las tarjetas salen de ejerciciosDelEntreno: los de la
+  // rutina y detrás los añadidos, con su foto y título copiados y sin etiqueta (RF-9).
+  // La posición i es la misma que en entreno.series.
+  const ejercicios = entreno ? ejerciciosDelEntreno(datos) : rutina.ejercicios;
+  ejercicios.forEach((ejercicio, i) => {
     html += '<section class="tarjeta">' +
       '<div class="ejercicio">' +
       '<img class="miniatura" src="' + escapar(ejercicio.foto) + '" alt="">' +
@@ -489,16 +636,19 @@ function htmlTablaPrevio(ejercicio) {
     '<tbody>' + filas + '</tbody></table>';
 }
 
-// Tabla del entrenamiento abierto para el ejercicio de la posición "i": una fila por cada
-// serie de "filas" (pueden ser más o menos que en la rutina, RF-30) con lo escrito en KG y REPS.
-// Cada campo lleva data-ejercicio, data-serie (desde 0) y data-campo para saber dónde guardar.
+// Tabla del entrenamiento abierto para el ejercicio de la posición "i" (uno de
+// ejerciciosDelEntreno): una fila por cada serie de "filas" (pueden ser más o menos que en
+// la rutina, RF-30) con lo escrito en KG y REPS. Cada campo lleva data-ejercicio,
+// data-serie (desde 0) y data-campo para saber dónde guardar.
 function htmlTablaEntreno(ejercicio, i, filas) {
+  const numeros = ejercicio.numeros;
   let cuerpo = '';
   filas.forEach((fila, serie) => {
-    const n = serie + 1; // en pantalla la serie empieza en 1
+    // El número que se ve: 1, 2, 3... en la rutina; el original en un añadido (RF-9)
+    const n = numeros[serie];
     const posicion = ' data-ejercicio="' + i + '" data-serie="' + serie + '"';
     // "Quitar" solo en la última fila y nunca si queda una sola serie (RF-30)
-    const quitar = n === filas.length && filas.length > 1
+    const quitar = serie === filas.length - 1 && filas.length > 1
       ? '<button type="button" class="quitar" data-quitar="' + i + '">Quitar</button>' : '';
     // Campos de texto (no number) para admitir la coma y que "abc" llegue a la validación (RF-31, RF-32).
     // inputmode abre en el iPhone el teclado con decimales (KG) o solo cifras (REPS).
@@ -510,8 +660,8 @@ function htmlTablaEntreno(ejercicio, i, filas) {
       ' data-campo="reps" aria-label="REPS de la serie ' + n + '" value="' + escapar(fila.reps) + '"></td>' +
       '<td>' + quitar + '</td></tr>';
   });
-  // Con 20 series no se pueden añadir más (RF-30)
-  const lleno = filas.length >= 20 ? ' disabled' : '';
+  // Si la última fila es la serie 20 no se pueden añadir más (RF-30, RF-12)
+  const lleno = numeros[numeros.length - 1] >= 20 ? ' disabled' : '';
   return '<table class="tabla-series tabla-entreno"><thead><tr>' +
     '<th>Serie</th><th>Previo</th><th>KG</th><th>REPS</th><th></th></tr></thead>' +
     '<tbody>' + cuerpo + '</tbody></table>' +
@@ -663,7 +813,8 @@ function alBorrarRutina(id) {
   const pregunta = dias.length > 0
     ? 'Esta rutina está asignada ' + textoDiasAsignados(dias) + '. ¿Borrarla?'
     : '¿Borrar la rutina ' + rutina.nombre + '?';
-  if (confirm(pregunta)) cambiar(borrarRutina(datos, id));
+  // En el mismo cambio se olvidan los pendientes que salieron de ella (RF-15)
+  if (confirm(pregunta)) cambiar(olvidarSinOrigen(borrarRutina(datos, id)));
 }
 
 // RF-39: si la rutina abierta tiene el entrenamiento abierto, avisa en la página,
@@ -743,18 +894,21 @@ function alGuardarEjercicio() {
   }
   // El título se guarda sin espacios de los extremos. Al cambiarlo, el Previo pasa a ser
   // el del título nuevo: los pesos van por título y no se mueven (RF-16).
-  const ejercicio = { titulo: titulo.trim(), foto: pantalla.foto, series: leerSeries(textoSeries) };
+  // Un ejercicio nuevo recibe un id nuevo; uno editado conserva el suyo (los pendientes lo usan).
+  const id = pantalla.indice === null ? nuevoId() : rutina.ejercicios[pantalla.indice].id;
+  const ejercicio = { id, titulo: titulo.trim(), foto: pantalla.foto, series: leerSeries(textoSeries) };
   pantalla.vista = 'editar';
   cambiar(guardarEjercicio(datos, pantalla.idRutina, pantalla.indice, ejercicio));
 }
 
-// "Borrar" de un ejercicio: pide confirmación y lo quita de la rutina (RF-15, RF-17).
+// "Borrar" de un ejercicio: pide confirmación y lo quita de la rutina (RF-15, RF-17; 002: RF-15).
 function alBorrarEjercicio(indice) {
   if (avisarSiBloqueada()) return;
   const ejercicio = datos.rutinas.find(r => r.id === pantalla.idRutina).ejercicios[indice];
   // confirm() muestra texto normal (no HTML), así que el título no se escapa aquí
   if (confirm('¿Borrar el ejercicio ' + ejercicio.titulo + '?')) {
-    cambiar(borrarEjercicio(datos, pantalla.idRutina, indice));
+    // En el mismo cambio se olvidan sus pendientes (RF-15)
+    cambiar(olvidarSinOrigen(borrarEjercicio(datos, pantalla.idRutina, indice)));
   }
 }
 
@@ -770,7 +924,16 @@ function alEmpezar(clave) {
   }
   // El botón ya sale desactivado o no sale, pero lo comprobamos por si acaso
   if (abierto || !puedeEmpezar(datos, clave, new Date())) return;
-  cambiar(empezarEntreno(datos, clave));
+  // Entreno nuevo: se empieza a preguntar por los pendientes (RF-5), olvidando antes, sin
+  // preguntar, los que coinciden con un ejercicio de su rutina (RF-8). Si no queda
+  // ninguno, no sale el bloque (RF-6). "Continuar" y RF-38 no pasan por aquí (RF-7).
+  // La marca se pone antes de cambiar() porque cambiar() ya repinta y el bloque debe salir.
+  pantalla.preguntar = true;
+  const nuevos = olvidarCoincidentes(empezarEntreno(datos, clave));
+  cambiar(nuevos);
+  // cambiar() solo sustituye "datos" si ha podido guardar. Si no (sin espacio), no hay
+  // entreno abierto y la marca se quita para que no quede activada.
+  if (datos !== nuevos) pantalla.preguntar = false;
 }
 
 // Se escribe en un campo KG o REPS: se guarda al momento, así lo escrito sobrevive a
@@ -797,9 +960,13 @@ function alTerminar() {
     }
     return;
   }
-  // Guarda los pesos como Previo, marca "✓ Hecho" y cierra el entrenamiento.
+  // Al terminar ya no hay preguntas que enseñar (RF-6).
+  pantalla.preguntar = false;
+  // Guarda las series sin hacer como pendientes (RF-1 a RF-3), los pesos como Previo,
+  // marca "✓ Hecho" y cierra el entrenamiento. Todo va en un solo cambiar() (un solo
+  // setItem): si no queda espacio no se guarda nada a medias y el entreno sigue abierto.
   // Se queda en la vista del día, que ya enseña el Previo nuevo.
-  cambiar(terminarEntreno(datos));
+  cambiar(terminarEntreno(guardarPendientes(datos)));
 }
 
 // Arranca la app en el navegador.
@@ -855,6 +1022,10 @@ function iniciar() {
     if (boton.sumar) cambiar(sumarSerie(datos, Number(boton.sumar)));
     if (boton.quitar) cambiar(quitarSerie(datos, Number(boton.quitar)));
     if (boton.terminar) alTerminar();
+    // Bloque de preguntas: "Añadir" lleva el pendiente al final del entreno (RF-9) y "No"
+    // lo olvida (RF-10). Las dos lo quitan de la cola y se ve la siguiente pregunta.
+    if (boton.aceptar) cambiar(aceptarPendiente(datos));
+    if (boton.rechazar) cambiar(rechazarPendiente(datos));
     if (boton.editar) alEditarRutina(boton.editar);
     if (boton.borrar) alBorrarRutina(boton.borrar);
     // Ejercicios de la rutina abierta (data-*-ejercicio lleva su posición, desde 0)
@@ -895,5 +1066,7 @@ if (typeof module !== 'undefined') {
     datosVacios, guardarRutina, guardarEjercicio, borrarEjercicio, diasAsignados,
     borrarRutina, asignarRutina, quitarRutina, rutinaBloqueada, diaBloqueado,
     previo, puedeEmpezar, empezarEntreno, escribirValor, sumarSerie, quitarSerie, terminarEntreno,
+    migrar, ejerciciosDelEntreno, existeOrigen, guardarPendientes,
+    olvidarCoincidentes, textoPregunta, aceptarPendiente, rechazarPendiente, olvidarSinOrigen,
   };
 }
