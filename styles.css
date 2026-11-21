@@ -493,3 +493,8 @@ p.rutina-nombre {
   display: block;
   width: 100%;
 }
+
+/* Separación entre "Añadir ejercicio" y "Compartir" (004) */
+.boton-ancho + .boton-ancho {
+  margin-top: 12px;
+}

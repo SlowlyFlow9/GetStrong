@@ -448,6 +448,87 @@ function migrar(datos) {
   return nuevos;
 }
 
+// ---------- Compartir rutinas (spec 004) ----------
+
+// Devuelve el TEXTO del archivo para compartir una rutina (RF-1, RF-2, RF-14).
+// Solo lleva el nombre y, por cada ejercicio en orden, su título, foto y series:
+// nada de ids, días, pesos ni pendientes. Crea objetos nuevos, así no toca la rutina.
+// JSON.stringify(..., null, 2) lo deja con sangría: se puede leer si alguien lo abre.
+function archivoRutina(rutina) {
+  const archivo = {
+    app: 'GetStrong',
+    version: 1,
+    nombre: rutina.nombre,
+    ejercicios: rutina.ejercicios.map(ejercicio => ({
+      titulo: ejercicio.titulo,
+      foto: ejercicio.foto,
+      series: ejercicio.series,
+    })),
+  };
+  return JSON.stringify(archivo, null, 2);
+}
+
+// Nombre del archivo a partir del nombre de la rutina (RF-1, RF-13).
+// Cambia por "-" los caracteres que los sistemas no admiten en un nombre de archivo
+// ( / \ : * ? " < > | ) y añade ".json". "Pierna/Glúteo" → "Pierna-Glúteo.json".
+function nombreArchivo(nombre) {
+  return nombre.replace(/[\/\\:*?"<>|]/g, '-') + '.json';
+}
+
+// Comprueba si el texto de un archivo es una rutina de GetStrong válida (RF-5, RF-10, RF-14).
+// Si vale devuelve una rutina limpia { nombre, ejercicios: [{ titulo, foto, series }] }
+// con el nombre y los títulos recortados y sin campos de más; si no, null.
+// Nunca lanza errores: cualquier archivo raro (un jpg, un JSON de otra app...) da null.
+function leerArchivoRutina(texto) {
+  let objeto;
+  try {
+    objeto = JSON.parse(texto);
+  } catch (error) {
+    return null; // no es JSON (por ejemplo, una foto)
+  }
+  // Tiene que ser un objeto {...}: ni null, ni un número, ni una lista.
+  if (typeof objeto !== 'object' || objeto === null || Array.isArray(objeto)) return null;
+  if (objeto.app !== 'GetStrong') return null;
+  if (typeof objeto.nombre !== 'string') return null;
+  const nombre = objeto.nombre.trim();
+  if (nombre === '' || nombre.length > 50) return null;
+  if (!Array.isArray(objeto.ejercicios)) return null; // una lista vacía sí vale (RF-14)
+
+  const limpia = { nombre, ejercicios: [] };
+  for (const e of objeto.ejercicios) {
+    if (typeof e !== 'object' || e === null) return null;
+    if (typeof e.titulo !== 'string' || typeof e.foto !== 'string' || typeof e.series !== 'number') return null;
+    if (e.titulo.trim().length > 50) return null;
+    // La foto tiene que ir dentro del archivo (data:image/...;base64,), nunca un enlace,
+    // y no pasar de 204.800 caracteres (una miniatura de la app ocupa ~38 KB).
+    if (!/^data:image\/[\w.+-]+;base64,/.test(e.foto) || e.foto.length > 204800) return null;
+    // Mismas reglas que una rutina hecha a mano: título, foto, título repetido y series 1-20.
+    if (validarEjercicio(limpia, null, e.titulo, e.foto, String(e.series)) !== '') return null;
+    limpia.ejercicios.push({ titulo: e.titulo.trim(), foto: e.foto, series: e.series });
+  }
+  return limpia;
+}
+
+// Añade al final de las rutinas una rutina importada (RF-5, RF-6, RF-8, RF-14, RF-16).
+// "rutina" es la que devuelve leerArchivoRutina; "id" es un nuevoId() y "nombre" el
+// nombre ya comprobado con validarRutina (se guarda recortado).
+// Cada ejercicio recibe el id "id-posición", el mismo esquema que migrar().
+// Sin días asignados: plan, pesos, pendientes y entrenamiento no cambian. Devuelve una copia.
+function importarRutina(datos, id, rutina, nombre) {
+  const nuevos = structuredClone(datos);
+  nuevos.rutinas.push({
+    id,
+    nombre: nombre.trim(),
+    ejercicios: rutina.ejercicios.map((ejercicio, i) => ({
+      id: id + '-' + i,
+      titulo: ejercicio.titulo,
+      foto: ejercicio.foto,
+      series: ejercicio.series,
+    })),
+  });
+  return nuevos;
+}
+
 // ============================================================
 // 2) INTERFAZ
 // ============================================================
@@ -468,7 +549,9 @@ let datos = null;
 //   aviso: texto en rojo que se ve en el siguiente pintar() y luego se borra
 //   preguntar: true desde "Empezar entrenamiento" hasta "Terminar entrenamiento": mientras
 //     tanto se pregunta por los pendientes (RF-5). Al recargar vuelve a false (RF-7, RF-11).
-const pantalla = { vista: 'semana', semana: 0, clave: null, idRutina: null, indice: null, foto: '', aviso: '', preguntar: false };
+//   importando: rutina leída de un archivo que espera otro nombre porque el suyo ya existe
+//     (004 RF-7), o null. Solo vive en memoria: al recargar desaparece (004 RF-9).
+const pantalla = { vista: 'semana', semana: 0, clave: null, idRutina: null, indice: null, foto: '', aviso: '', preguntar: false, importando: null };
 
 // ---------- Guardado ----------
 
@@ -518,6 +601,8 @@ function htmlAviso() {
 
 // Dibuja la vista que toque en <main id="vista"> y marca la pestaña activa.
 function pintar() {
+  // 004 RF-9: salir de Rutinas (por donde sea) cancela la pregunta del nombre sin importar
+  if (pantalla.vista !== 'rutinas') pantalla.importando = null;
   const hoy = new Date();
   document.getElementById('pestana-actual').classList.toggle('activa', pantalla.vista === 'semana' && pantalla.semana === 0);
   document.getElementById('pestana-siguiente').classList.toggle('activa', pantalla.vista === 'semana' && pantalla.semana === 1);
@@ -672,14 +757,33 @@ function htmlTablaEntreno(ejercicio, i, filas) {
 // El aviso va arriba, justo encima del formulario y de la lista.
 function htmlRutinas() {
   let html = htmlAviso();
-  // maxlength="50": el navegador no deja escribir el carácter 51, sin mensaje (RF-14)
-  html += '<form class="formulario" data-form="nueva">' +
-    '<label for="nombre-rutina">Nueva rutina</label>' +
-    '<div class="fila">' +
-    '<input id="nombre-rutina" type="text" maxlength="50" autocomplete="off">' +
-    '<button type="submit" class="principal">Crear</button>' +
-    '</div></form>';
+  if (pantalla.importando) {
+    // 004 RF-7: el nombre del archivo ya existe. En lugar del formulario "Crear" se pide
+    // otro nombre. El campo reutiliza id="nombre-rutina" (16 px y maxlength="50", RF-8)
+    // y viene relleno con el nombre del archivo.
+    const nombre = escapar(pantalla.importando.nombre);
+    html += '<form class="formulario pregunta" data-form="importar">' +
+      '<p>Ya tienes una rutina llamada ' + nombre + '. Escribe otro nombre para importarla.</p>' +
+      '<div class="fila">' +
+      '<input id="nombre-rutina" type="text" maxlength="50" autocomplete="off" aria-label="Nombre de la rutina" value="' + nombre + '">' +
+      '<button type="submit" class="principal">Importar</button>' +
+      '<button type="button" data-cancelar-importar="si">Cancelar</button>' +
+      '</div></form>';
+  } else {
+    // maxlength="50": el navegador no deja escribir el carácter 51, sin mensaje (RF-14)
+    html += '<form class="formulario" data-form="nueva">' +
+      '<label for="nombre-rutina">Nueva rutina</label>' +
+      '<div class="fila">' +
+      '<input id="nombre-rutina" type="text" maxlength="50" autocomplete="off">' +
+      '<button type="submit" class="principal">Crear</button>' +
+      // 004 RF-4: "Importar" (secundario) abre el selector de archivos oculto de abajo
+      '<button type="button" data-importar="si">Importar</button>' +
+      '</div></form>' +
+      // Sin accept: se puede elegir cualquier archivo (en el iPhone, con accept=".json" saldría gris)
+      '<input type="file" id="archivo-importar" hidden>';
+  }
 
+  // La lista de rutinas sale igual con el formulario o con la pregunta
   html += '<ul class="rutinas">';
   for (const rutina of datos.rutinas) {
     html += '<li class="rutina">' +
@@ -725,7 +829,9 @@ function htmlEditarRutina() {
     });
     html += '</ul>';
   }
-  return html + '<button type="button" class="boton-ancho principal" data-anadir-ejercicio="si">Añadir ejercicio</button>';
+  return html + '<button type="button" class="boton-ancho principal" data-anadir-ejercicio="si">Añadir ejercicio</button>' +
+    // 004 RF-1: "Compartir" secundario (gris), debajo de "Añadir ejercicio"
+    '<button type="button" class="boton-ancho" data-compartir="si">Compartir</button>';
 }
 
 // Vista Ejercicio: formulario para añadir uno nuevo o editar uno que ya existe
@@ -789,14 +895,12 @@ function alGuardarNombre(id, nombre) {
   cambiar(guardarRutina(datos, id === null ? nuevoId() : id, nombre));
 }
 
-// Botón "Editar" de la lista: abre la rutina, salvo que tenga el entrenamiento abierto (RF-39).
+// Botón "Editar" (lista o día): abre "Editar rutina" siempre, también la del entrenamiento
+// abierto, para poder compartirla (RF-15 de la 004). Cada acción de edición comprueba
+// el bloqueo por su cuenta y avisa sin cambiar nada.
 function alEditarRutina(id) {
-  if (rutinaBloqueada(datos, id)) {
-    pantalla.aviso = 'Termina el entrenamiento antes de editar esta rutina';
-  } else {
-    pantalla.vista = 'editar';
-    pantalla.idRutina = id;
-  }
+  pantalla.vista = 'editar';
+  pantalla.idRutina = id;
   pintar();
 }
 
@@ -912,6 +1016,84 @@ function alBorrarEjercicio(indice) {
   }
 }
 
+// "Compartir" de la rutina abierta (004: RF-1, RF-2, RF-3, RF-13, RF-14).
+// Abre el menú de compartir del móvil con el archivo; si no se puede, lo descarga.
+// No llama a cambiar() ni a pintar(): no cambia nada guardado (RF-2) ni sale aviso.
+function alCompartir() {
+  const rutina = datos.rutinas.find(r => r.id === pantalla.idRutina);
+  const archivo = new File([archivoRutina(rutina)], nombreArchivo(rutina.nombre), { type: 'application/json' });
+  // Todo es síncrono hasta navigator.share: el navegador exige llamarlo dentro del toque.
+  // Con file:// o en Chrome de Android (no comparte .json) no hay canShare o da false.
+  if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+    navigator.share({ files: [archivo] }).catch(error => {
+      // AbortError = el usuario ha cerrado el menú: no pasa nada (RF-3)
+      if (error.name !== 'AbortError') descargar(archivo); // RF-13
+    });
+  } else {
+    descargar(archivo); // RF-13
+  }
+}
+
+// Archivo elegido con "Importar" (004: RF-5, RF-10, RF-14).
+// Lee el texto, lo valida y, si el nombre está libre, añade la rutina.
+function alElegirArchivo(archivo) {
+  if (!archivo) return; // se cerró el selector sin elegir nada
+  archivo.text().then(texto => {
+    // Si el usuario ya ha salido de Rutinas, no se hace nada (como en alElegirFoto)
+    if (pantalla.vista !== 'rutinas') return;
+    const rutina = leerArchivoRutina(texto);
+    if (rutina === null) { // RF-10: no es una rutina válida, no se importa nada
+      pantalla.aviso = 'Este archivo no es una rutina válida';
+      pintar();
+      return;
+    }
+    // RF-7: el nombre ya existe. No se importa aún: se pregunta por otro nombre
+    if (validarRutina(datos, null, rutina.nombre) !== '') {
+      pantalla.importando = rutina;
+      pintar();
+      return;
+    }
+    importar(rutina, rutina.nombre); // RF-5
+  }).catch(() => {
+    // El archivo no se pudo leer (p. ej. de iCloud sin descargar): se trata como roto (RF-10)
+    if (pantalla.vista !== 'rutinas') return;
+    pantalla.aviso = 'Este archivo no es una rutina válida';
+    pintar();
+  });
+}
+
+// Añade la rutina leída con "nombre" y un id nuevo (RF-5, RF-16). Se guarda como todo
+// lo demás (RF-12); si no cabe, cambiar() deja "No queda espacio para guardar" (RF-11).
+// La pregunta de RF-7 se cierra siempre, también si no cabe (no se importa nada).
+function importar(rutina, nombre) {
+  pantalla.importando = null;
+  cambiar(importarRutina(datos, nuevoId(), rutina, nombre));
+}
+
+// "Importar" de la pregunta de RF-7: importa con el nombre escrito si vale (004 RF-8).
+// La rutina que ya existía no se toca nunca.
+function alImportarConNombre(nombre) {
+  const error = validarRutina(datos, null, nombre); // vacío o repetido
+  if (error) {
+    pantalla.aviso = error;
+    pintar(); // la pregunta sigue abierta
+    // Repintar vacía el campo: le devolvemos lo escrito para que se pueda corregir
+    document.getElementById('nombre-rutina').value = nombre;
+    return;
+  }
+  importar(pantalla.importando, nombre);
+}
+
+// Descarga "archivo" con un enlace <a download> que se pulsa solo (RF-13).
+function descargar(archivo) {
+  const enlace = document.createElement('a');
+  enlace.href = URL.createObjectURL(archivo);
+  enlace.download = archivo.name;
+  enlace.click();
+  // Se libera la dirección un segundo después: hacerlo al momento puede cortar la descarga
+  setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
+}
+
 // "Empezar entrenamiento" del día "clave" (RF-27, RF-28, RF-38).
 function alEmpezar(clave) {
   const abierto = datos.entrenamiento;
@@ -1007,6 +1189,7 @@ function iniciar() {
     const clave = evento.target.dataset.dia;
     if (clave) alCambiarDia(clave, evento.target.value);
     if (evento.target.id === 'foto-ejercicio') alElegirFoto(evento.target.files[0]);
+    if (evento.target.id === 'archivo-importar') alElegirArchivo(evento.target.files[0]); // 004 RF-4
   });
   // Cada letra escrita en KG o REPS del entrenamiento (data-campo) se guarda al momento
   vista.addEventListener('input', evento => {
@@ -1035,6 +1218,12 @@ function iniciar() {
     if (boton.anadirEjercicio) alAbrirEjercicio(null);
     if (boton.editarEjercicio) alAbrirEjercicio(Number(boton.editarEjercicio));
     if (boton.borrarEjercicio) alBorrarEjercicio(Number(boton.borrarEjercicio));
+    if (boton.compartir) alCompartir(); // 004 RF-1
+    if (boton.importar) document.getElementById('archivo-importar').click(); // 004 RF-4
+    if (boton.cancelarImportar) { // 004 RF-9: "Cancelar" de la pregunta, no se importa nada
+      pantalla.importando = null;
+      pintar();
+    }
     if (boton.volver) { // "Cancelar" del formulario de ejercicio: vuelve a la rutina sin guardar
       pantalla.vista = 'editar';
       pintar();
@@ -1048,6 +1237,7 @@ function iniciar() {
     const nombre = document.getElementById('nombre-rutina').value;
     if (formulario === 'nueva') alGuardarNombre(null, nombre);
     if (formulario === 'renombrar') alGuardarNombre(pantalla.idRutina, nombre);
+    if (formulario === 'importar') alImportarConNombre(nombre); // 004 RF-8
   });
 
   pintar(); // RF-1: siempre empieza en "Esta semana"
@@ -1071,5 +1261,6 @@ if (typeof module !== 'undefined') {
     previo, puedeEmpezar, empezarEntreno, escribirValor, sumarSerie, quitarSerie, terminarEntreno,
     migrar, ejerciciosDelEntreno, existeOrigen, guardarPendientes,
     olvidarCoincidentes, textoPregunta, aceptarPendiente, rechazarPendiente, olvidarSinOrigen,
+    archivoRutina, nombreArchivo, leerArchivoRutina, importarRutina,
   };
 }
